@@ -7,41 +7,43 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 def fetch_price(url, regex=None):
-    """
-    Загружает страницу и пытается вытащить цену TAO:
-    1) Селектором рядом с логотипом
-    2) По крупному заголовку, разбитому на две части
-    3) Fallback — по регулярке
-    """
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     html = resp.text
+
+    # --- DEBUG: посмотрим первые 500 символов и все вхождения доллара
+    print("[DEBUG] Page start:\n", html[:500])
+    print("[DEBUG] All $… matches:", re.findall(r'\$[\d\.]+', html)[:10])
+    # ----------------------------------------
+
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1) Цена рядом с логотипом
+    # 1) точечный селектор
     el = soup.select_one("div.flex.items-center.gap-0\\.5.sm\\:gap-3 > p.text-foreground")
     if el:
-        # текст вида "$369.95"
         text = el.get_text(strip=True)
+        print("[DEBUG] Selector1 matched:", text)
         return text.lstrip("$")
 
-    # 2) Крупный блок, разбитый на две части: "$369." + "95"
+    # 2) крупный блок
     el_major = soup.select_one("div.flex-row.items-end p.text-2xl")
     if el_major:
-        major = el_major.get_text(strip=True).lstrip("$")  # "369."
-        minor = ""
-        # следующий <p> содержит дробную часть
+        major = el_major.get_text(strip=True).lstrip("$")
+        print("[DEBUG] Selector2 major part:", major)
         sibling = el_major.find_next_sibling("p")
+        minor = ""
         if sibling:
             m = re.search(r"(\d+)", sibling.get_text())
             if m:
-                minor = m.group(1)  # "95"
+                minor = m.group(1)
+                print("[DEBUG] Selector2 minor part:", minor)
         return f"{major}{minor}"
 
-    # 3) Fallback на regex
+    # 3) regex-фоллбэк
     if regex:
         m = re.search(regex, html)
         if m:
+            print("[DEBUG] Regex fallback matched:", m.group(0))
             return m.group(1)
 
     raise ValueError("Не удалось найти цену на странице")
