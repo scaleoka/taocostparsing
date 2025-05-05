@@ -6,24 +6,25 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 def fetch_price_from_next_data(url):
-    # 1) GET страницы как HTML
+    # Заголовки, чтобы получить нормальный HTML (а не RSC)
     headers = {
-        "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                       "AppleWebKit/537.36 (KHTML, like Gecko) "
-                       "Chrome/136.0.0.0 Safari/537.36")
+        "Accept": "text/html",
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/136.0.0.0 Safari/537.36"
+        )
     }
     resp = requests.get(url, headers=headers, timeout=10)
     resp.raise_for_status()
 
-    # 2) Извлекаем JSON из тега __NEXT_DATA__
     soup = BeautifulSoup(resp.text, "html.parser")
     script = soup.find("script", {"id": "__NEXT_DATA__"})
     if not script or not script.string:
-        raise RuntimeError("Не найден __NEXT_DATA__ на странице")
-    data = json.loads(script.string)
+        raise RuntimeError("Не найден __NEXT_DATA__ на странице — проверьте headers/Accept")
 
-    # 3) Спускаемся в структуру props.pageProps.stats.taoPrice
-    #    Точное местоположение лучше проверить в отладке, но обычно:
+    data = json.loads(script.string)
+    # Проверьте точный путь в вашем __NEXT_DATA__; обычно:
     price = data["props"]["pageProps"]["stats"]["taoPrice"]
     return str(price)
 
@@ -41,11 +42,10 @@ def write_to_sheet(spreadsheet_id, sheet_name, cell, price, key_json):
     ).execute()
 
 def main():
-    # Переменные окружения, как и раньше
-    url            = os.environ["SOURCE_URL"]       # https://taostats.io
+    url            = os.environ["SOURCE_URL"]     # https://taostats.io
     spreadsheet_id = os.environ["SPREADSHEET_ID"]
-    sheet_name     = os.environ["SHEET_NAME"]       # например, "TAO cost"
-    cell           = os.environ["TARGET_CELL"]      # например, "A2"
+    sheet_name     = os.environ["SHEET_NAME"]     # например, "TAO cost"
+    cell           = os.environ["TARGET_CELL"]    # например, "A2"
     key_json       = os.environ["GOOGLE_KEY_JSON"]
 
     price = fetch_price_from_next_data(url)
