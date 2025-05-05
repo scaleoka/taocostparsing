@@ -1,11 +1,9 @@
 name: Parse TAO Cost
 
 on:
-  # По расписанию: каждый час в 0-й минуте
   schedule:
-    - cron: '0 * * * *'
-  # Ручной запуск из Actions → Run workflow
-  workflow_dispatch:
+    - cron: '*/5 * * * *'      # каждые 5 минут
+  workflow_dispatch:           # ручной запуск
 
 jobs:
   build-and-parse:
@@ -30,23 +28,24 @@ jobs:
           pip install -r requirements.txt
 
       # 4) Пишем ключ сервис-аккаунта в файл
-      - name: Write service-account key
+      - name: Write service-account key to key.json
         run: echo "$GOOGLE_KEY_JSON" > key.json
         env:
           GOOGLE_KEY_JSON: ${{ secrets.GOOGLE_KEY_JSON }}
 
-      # 5) (по желанию) делаем run.sh исполнителем
+      # 5) Делаем run.sh исполняемым (на всякий случай)
       - name: Make run.sh executable
         run: chmod +x run.sh
 
       # 6) Запускаем парсер
       - name: Run parser
-        env:
-          SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
-          SHEET_NAME:     ${{ secrets.SHEET_NAME }}
-          TARGET_CELL:    ${{ secrets.TARGET_CELL }}
-          SOURCE_URL:     ${{ secrets.SOURCE_URL }}
-          PRICE_REGEX:    ${{ secrets.PRICE_REGEX }}
         run: |
           source venv/bin/activate
           bash run.sh
+        env:
+          GOOGLE_KEY_JSON: ${{ secrets.GOOGLE_KEY_JSON }}
+          SPREADSHEET_ID:  ${{ secrets.SPREADSHEET_ID }}
+          SHEET_NAME:      ${{ secrets.SHEET_NAME }}
+          TARGET_CELL:     ${{ secrets.TARGET_CELL }}
+          SOURCE_URL:      ${{ secrets.SOURCE_URL }}
+          PRICE_REGEX:     ${{ secrets.PRICE_REGEX }}
