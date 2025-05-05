@@ -8,39 +8,35 @@ from googleapiclient.discovery import build
 
 def fetch_price(url, regex=None):
     """
-    1) Ищем <p class="text-foreground…">$372.36</p> внутри контейнера flex-col
-    2) Если нет — склеиваем часть p.text-2xl ("$372.") и следующий p ("36")
-    3) Fallback — по regex
+    1) Находим <img alt="Status Logo"> и берём соседний <p> с ценой.
+    2) Fallback: склеиваем крупную и мелкую часть (p.text-2xl + next p).
+    3) Последний ресурс: regex.
     """
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     html = resp.text
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1) Полноценная цена $NNN.NN в компактном блоке
-    sel_full = (
-        "div.flex.flex-col.sm\\:flex-row.items-center.gap-1\\.5.sm\\:gap-3"
-        " > div.flex.items-center.gap-0\\.5.sm\\:gap-3"
-        " > p.text-foreground"
-    )
-    el = soup.select_one(sel_full)
-    if el:
-        return el.get_text(strip=True).lstrip("$")
+    # 1) Поиск через логотип Status
+    logo = soup.find("img", alt="Status Logo")
+    if logo:
+        p = logo.find_next_sibling("p")
+        if p:
+            return p.get_text(strip=True).lstrip("$")
 
     # 2) Раздельная цена: "$NNN." + "NN"
     el_major = soup.select_one("div.flex-row.items-end p.text-2xl")
     if el_major:
         major = el_major.get_text(strip=True).lstrip("$")  # "372."
-        # следующий <p> содержит дробную часть и, возможно, span с % 
-        sibling = el_major.find_next_sibling("p")
         minor = ""
+        sibling = el_major.find_next_sibling("p")
         if sibling:
             m = re.search(r"(\d+)", sibling.get_text())
             if m:
                 minor = m.group(1)  # "36"
         return f"{major}{minor}"
 
-    # 3) Regex-фоллбэк
+    # 3) Fallback по regex
     if regex:
         m = re.search(regex, html)
         if m:
