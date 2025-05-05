@@ -1,12 +1,27 @@
+name: Parse TAO Cost
+
+on:
+  # По расписанию: каждый час в 0-й минуте
+  schedule:
+    - cron: '0 * * * *'
+  # Ручной запуск из Actions → Run workflow
+  workflow_dispatch:
+
 jobs:
   build-and-parse:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      # 1) Клонируем репозиторий
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - uses: actions/setup-python@v4
-        with: { python-version: '3.10' }
+      # 2) Устанавливаем Python
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
+      # 3) Виртуальное окружение и установка зависимостей
       - name: Install dependencies
         run: |
           python -m venv venv
@@ -14,14 +29,17 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
+      # 4) Пишем ключ сервис-аккаунта в файл
       - name: Write service-account key
         run: echo "$GOOGLE_KEY_JSON" > key.json
         env:
           GOOGLE_KEY_JSON: ${{ secrets.GOOGLE_KEY_JSON }}
 
+      # 5) (по желанию) делаем run.sh исполнителем
       - name: Make run.sh executable
         run: chmod +x run.sh
 
+      # 6) Запускаем парсер
       - name: Run parser
         env:
           SPREADSHEET_ID: ${{ secrets.SPREADSHEET_ID }}
@@ -31,4 +49,4 @@ jobs:
           PRICE_REGEX:    ${{ secrets.PRICE_REGEX }}
         run: |
           source venv/bin/activate
-          ./run.sh
+          bash run.sh
