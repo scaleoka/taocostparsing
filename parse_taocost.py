@@ -6,68 +6,41 @@ from bs4 import BeautifulSoup
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
-def find_price_in_object(obj):
-    """
-    Рекурсивно ищет первое значение по ключу, оканчивающемуся на 'price'.
-    """
-    if isinstance(obj, dict):
-        for k, v in obj.items():
-            if k.lower().endswith('price') and isinstance(v, (int, float, str)):
-                return v
-            result = find_price_in_object(v)
-            if result is not None:
-                return result
-    elif isinstance(obj, list):
-        for item in obj:
-            result = find_price_in_object(item)
-            if result is not None:
-                return result
-    return None
-
 def fetch_price(url, regex=None):
     """
-    Попытается получить цену TAO с taostats.io:
-    1) CSS-селектор рядом с логотипом
-    2) Крупный блок заголовка
-    3) JSON из Next.js (_next/data/<buildId>/index.json)
-    4) Fallback на regex
+    1) Ищем <p class="text-foreground…">$372.36</p> внутри контейнера flex-col
+    2) Если нет — склеиваем часть p.text-2xl ("$372.") и следующий p ("36")
+    3) Fallback — по regex
     """
     resp = requests.get(url, timeout=10)
     resp.raise_for_status()
     html = resp.text
     soup = BeautifulSoup(html, "html.parser")
 
-    # 1. CSS-селектор рядом с логотипом
-    el = soup.select_one("div.flex.items-center.gap-0\\.5.sm\\:gap-3 > p.text-foreground")
+    # 1) Полноценная цена $NNN.NN в компактном блоке
+    sel_full = (
+        "div.flex.flex-col.sm\\:flex-row.items-center.gap-1\\.5.sm\\:gap-3"
+        " > div.flex.items-center.gap-0\\.5.sm\\:gap-3"
+        " > p.text-foreground"
+    )
+    el = soup.select_one(sel_full)
     if el:
         return el.get_text(strip=True).lstrip("$")
 
-    # 2. Крупный блок: "$369." + "95"
+    # 2) Раздельная цена: "$NNN." + "NN"
     el_major = soup.select_one("div.flex-row.items-end p.text-2xl")
     if el_major:
-        major = el_major.get_text(strip=True).lstrip("$")
-        minor = ""
+        major = el_major.get_text(strip=True).lstrip("$")  # "372."
+        # следующий <p> содержит дробную часть и, возможно, span с % 
         sibling = el_major.find_next_sibling("p")
+        minor = ""
         if sibling:
             m = re.search(r"(\d+)", sibling.get_text())
             if m:
-                minor = m.group(1)
+                minor = m.group(1)  # "36"
         return f"{major}{minor}"
 
-    # 3. Попробуем Next.js JSON (buildId)
-    m = re.search(r'/_next/data/([^/]+)/index\.json', html)
-    if m:
-        build_id = m.group(1)
-        json_url = f"{url.rstrip('/')}/_next/data/{build_id}/index.json"
-        try:
-            idx = requests.get(json_url, timeout=10).json()
-            price_val = find_price_in_object(idx)
-            if price_val is not None:
-                return str(price_val)
-        except Exception:
-            pass  # не критично, перейдём к regex
-
-    # 4. Fallback: ваш PRICE_REGEX
+    # 3) Regex-фоллбэк
     if regex:
         m = re.search(regex, html)
         if m:
